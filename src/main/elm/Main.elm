@@ -13,11 +13,19 @@ type Message
   | JobListRetrieved (Result Http.Error (List Job))
   | JobDetailsRetrieved String (Result Http.Error JobDetails)
 
+type alias Flags =
+  { jenkinsViewName : String
+  , height : Int
+  , width: Int
+  }
+
 type alias Model =
   { viewName : String
   , state : State
   , now : Time
   , jobs : Dict String (Result () JobDetails)
+  , height : Int
+  , width : Int
   }
 
 type State
@@ -42,7 +50,7 @@ type alias Build =
   , timestamp : Int
   }
 
-main : Program String Model Message
+main : Program Flags Model Message
 main =
   programWithFlags
     { init = init
@@ -51,9 +59,17 @@ main =
     , view = view
     }
 
-init : String -> ( Model, Cmd Message )
-init jenkinsViewName =
-  ({ viewName = jenkinsViewName, state = Working, jobs = Dict.empty, now = 0 }, Task.perform Update Time.now)
+init : Flags -> ( Model, Cmd Message )
+init {jenkinsViewName, height, width} =
+  ( { viewName = jenkinsViewName
+    , state = Working
+    , jobs = Dict.empty
+    , now = 0
+    , height = height
+    , width = width
+    }
+  , Task.perform Update Time.now
+  )
 
 update : Message -> Model -> ( Model, Cmd Message )
 update msg model =
@@ -161,13 +177,38 @@ subscriptions {state} =
 view : Model -> Html msg
 view model =
   let
+    onlyOkJobs x =
+      case x of
+        Ok jobDetails ->
+          Just jobDetails
+        _ ->
+          Nothing
+
+    longestName =
+      Dict.values model.jobs
+        |> List.filterMap onlyOkJobs
+        |> List.map (String.length << .name)
+        |> List.maximum
+        |> Maybe.withDefault 0
+
     fontSize =
-      clamp 0 30 <| round <| 100 / (toFloat <| Dict.size model.jobs) * 0.70
+      --clamp 0 30 <| round <| 100 / (toFloat <| Dict.size model.jobs) * 0.70
+      --model.documentHeight // (Dict.size model.jobs) * 70 // 100
+      model.width // longestName * 4 // 3
+
+    barHeight =
+      (model.height - 8) // (Dict.size model.jobs) - 8
 
     viewJob (jobName, jobDetails) =
       case jobDetails of
         Ok {name, color, lastBuild, lastSuccessfulBuild} ->
-          div [ class color, style [ ("font-size", (toString fontSize) ++ "vmin") ] ]
+          div
+            [ class color
+            , style
+              [ ("height", toString (barHeight) ++ "px")
+              , ("line-height", toString (barHeight) ++ "px")
+              ]
+            ]
             [ if isBuilding { color = color } then
                 progressBar lastBuild lastSuccessfulBuild
               else
@@ -191,4 +232,10 @@ view model =
           div [ class "progress", style [ ("width", "0") ] ] []
 
   in
-    div [ class "job-container" ] (List.map viewJob <| Dict.toList model.jobs)
+    div
+      [ class "job-container"
+      , style
+        [ ("font-size", (toString fontSize) ++ "px" )
+        ]
+      ]
+      (List.map viewJob <| Dict.toList model.jobs)
