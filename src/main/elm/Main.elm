@@ -111,6 +111,7 @@ update msg model =
         newModel =
           { model
           | jobs = Dict.merge addJob updateColor removeJob details model.jobs Dict.empty
+          , state = Working
           }
         requestJobDetails job =
           Http.send (JobDetailsRetrieved job.name)
